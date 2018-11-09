@@ -10,7 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <zlib.h>
-
+#include <time.h>
 extern int errno ;
 
 static const char* const KWupPassword = "DFG#$%^#%$RGHR(&*M<><";
@@ -32,8 +32,10 @@ int main(int argc, char **argv) {
     if(argc > 2){
         outName = argv[2];
     }
-
     fileName = argv[1];
+
+    printf("input file name %s,out put file name:%s\n",fileName,outName);
+
     if( access(fileName, R_OK ) == -1 ) {
         printf("file : %s 'can not read'\n", fileName);
         return 2;
@@ -50,22 +52,22 @@ int main(int argc, char **argv) {
         printf("can not allocate memory size:%zu'\n", buffSize);
         return 3;
     }
-
+    printf("%s size:%zu,malloc buff size:%zu\n",fileName,fileSize,buffSize);
     int fd = open(fileName,O_RDONLY);
 
     if(-1 == fd){
-        perror("open file failed");
+        printf("%s open failed %s\n", fileName,strerror(errno));
         goto buff;
     }
 
     size_t size = read(fd, buff,fileSize);
     if(size != fileSize){
-        perror("read file failed");
+        printf("%s read failed actual size:%zu, read:%zu %s\n", fileName,fileSize,size,strerror(errno));
         close(fd);
         goto buff;
     }
     close(fd);
-
+    printf("%s:%zu read succeed\n",fileName,fileSize);
 
     gzFile file0 = gzopen(TMP_NAME, "wb9");
     int ret = gzwrite(file0, buff, fileSize);
@@ -76,17 +78,18 @@ int main(int argc, char **argv) {
 
     stat(TMP_NAME, &st);
     fileSize = st.st_size;
+    printf("%s compress to %s:%zu\n",fileName,TMP_NAME,fileSize);
 
     fd = open(TMP_NAME,O_RDONLY);
 
     if(-1 == fd){
-        perror("open file failed");
+        printf("%s open failed,%s\n",TMP_NAME,strerror(errno));
         goto buff;
     }
 
     size = read(fd, buff,fileSize);
     if(size != fileSize){
-        perror("read file failed");
+        printf("%s read failed actua size:%zu read size:%zu %s\n",TMP_NAME,fileSize,size,strerror(errno));
         close(fd);
         goto buff;
     }
@@ -118,16 +121,26 @@ int main(int argc, char **argv) {
     fd = open(outName,O_WRONLY|O_CREAT|O_TRUNC,mode);
 
     if(-1 == fd){
-        perror("open file failed");
+        printf("%s open failed %s\n", outName,strerror(errno));
         goto encrypt;
     }
+    //file header
+    int version = 0x55550101;
+    write(fd,(const void*) & version,sizeof(int));
+    int t = time(NULL);
+    write(fd,(const void*) & t,sizeof(int));
+    uint8_t fileMD5 [MD5_LEN];
+    md5((uint8_t*)encryptData, encryptLen, fileMD5);
+    write(fd, fileMD5,MD5_LEN);
 
+    //file body
     size = write(fd, encryptData,encryptLen);
+
     if(size != encryptLen){
-        perror("write file failed");
+        printf("%s write failed size:%zu write size:%zu %s\n",outName,encryptLen,size,strerror(errno));
     }
     close(fd);
-
+    printf("success\n");
 encrypt:
     free(encryptData);
     
